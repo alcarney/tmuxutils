@@ -1,0 +1,125 @@
+#!/bin/bash
+
+# This script is a collection of utilities which helps me integrate
+# everthing into my tmux session just how I like it.
+
+VIM_SERVER_FILE=/tmp/vim_servers # Currently not used
+REMOTE_NVIM_SCRIPT=$HOME/bin/remote_nvim
+
+# Function to generate a unique session id for us
+get_new_session_id ()
+{
+    tmux ls > /dev/null 2> /dev/null
+
+    if [[ $? -eq 1 ]]; then
+        id_num=1
+    else
+        id_num=$(echo $(tmux ls | wc -l) + 1 | bc)
+    fi
+    echo "$USER$id_num"
+}
+
+# Function to get the current session id
+get_session_id ()
+{
+    MUX_SESSION=$(tmux display-message -p "#S")
+    SESSION_ID=${MUX_SESSION}
+
+    echo $SESSION_ID
+}
+
+# This function is called by start_session, when the user's
+# EDITOR env var is set to "vim"
+start_vim_session ()
+{
+    # To get a unique server name we will take the username and appened the tmux
+    # session name
+    # NOTE: This WILL break if the user renames the tmux session after its been
+    # created
+    SESSION_ID=$(get_session_id)
+
+    # Write the server name to a file in so we can find it later
+    echo $SESSION_ID >> $VIM_SERVER_FILE
+
+    # Create the vim server session in a new pane
+    tmux new-window -n "vim" "vim --servername $SESSION_ID"
+    tmux select-window -t:-1
+}
+
+# This function is called by new_session, when the user's
+# EDITOR env var is set to "nvim"
+start_nvim_session ()
+{
+    # To get a unique listen address, take the username and append the name of the session
+    # after its been created
+    NVIM_SERVER=$(get_session_id)
+
+    tmux new-window -n "nvim" "NVIM_LISTEN_ADDRESS=/tmp/$NVIM_SERVER nvim"
+    tmux select-window -t:-1
+}
+
+# This command will be called by ranger when we want to open some files
+open_files ()
+{
+    case $EDITOR in
+        "vim")
+            # Generate the vim servername in the same way as in new_vim_session
+            # NOTE: This will break if the user has renamed the tmux session
+            # NOTE: This currently doesn't work with filenames which contain spaces
+            VIM_SERVER=$(get_session_id)
+
+            vim --servername $VIM_SERVER --remote-silent "$@";;
+
+        "nvim")
+            # Generate the vim servername in the same way as in new_vim_session
+            # NOTE: This will break if the user has renamed the tmux session
+            # NOTE: This currently doesn't work with filenames which contain spaces
+            NVIM_SERVER=$(get_session_id)
+
+            # Call our remote python helper script
+            python2 $REMOTE_NVIM_SCRIPT --listen-address /tmp/$NVIM_SERVER --open-files "$@";;
+        *)
+            #Editor not supported
+            echo "Not supported"
+    esac
+
+    # Switch to that pane
+    tmux select-window -t $EDITOR
+}
+
+
+# This function is called each time a new tmux session is started and is
+# responsible for starting
+new_session ()
+{
+    SESSION_ID=$(get_new_session_id)
+
+    tmux new-session -s $SESSION_ID "zsh -c 'tmuxutils --start-session' ; zsh -c ranger"
+}
+
+start_session ()
+{
+    case $EDITOR in
+        "vim")
+            start_vim_session;;
+        "nvim")
+            start_nvim_session;;
+        *)
+            # For any other editor we don't want/need to do any special setup
+    esac
+}
+
+# Command line argument handling
+case $1 in
+    "--new-session")
+        new_session;;
+    "--start-session")
+        start_session;;
+    "--open-files")
+        # Shift the args along by 1 so $@ now just contains the list of files
+        shift
+        open_files "$@" > $HOME/out.txt 2> $HOME/out.txt;;
+    *)
+        echo "Command not found. See usage when its written"
+        #echo $@
+esac

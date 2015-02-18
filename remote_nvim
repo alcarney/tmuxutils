@@ -1,0 +1,55 @@
+#!/usr/bin/python2
+
+import argparse
+from neovim import attach
+from sys import exit
+
+class NVim_Comms():
+    """
+    A class which will handle all our communications with the nvim instance
+    """
+
+    def __init__(self, addr):
+        """
+        Init function, tries to open connection to nvim instance,
+        fires up the logger and any other prep
+        """
+        self.nvim = attach('socket', path=addr)
+
+
+    def open_files(self, file_list):
+
+        # This naive approach will work for a while but wont handle filenames with spaces
+        files = file_list.split(' ')
+
+        for f in files:
+            self.nvim.command("e %s" % f)
+
+def handle_args():
+    """
+    Function which handles our command line arguments for us
+    """
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument('--listen-address', dest='listen_addr', type=str, action='store', default="",
+                            help="The address where the nvim server is running")
+    parser.add_argument('--open-files', dest='files', type=str, action='store',
+                            help="The filepaths to the files you wish to open")
+
+    return parser.parse_args()
+
+
+# Our main function
+def main():
+
+    args = handle_args()
+
+    if args.listen_addr == "":
+        print "You need to provide the address of the server"
+        exit(1)
+
+    nvim_comms = NVim_Comms(args.listen_addr)
+    nvim_comms.open_files(args.files)
+
+if __name__ == '__main__':
+    main()
